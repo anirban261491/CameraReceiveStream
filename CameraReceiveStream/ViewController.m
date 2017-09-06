@@ -7,8 +7,29 @@
 //
 
 #import "ViewController.h"
+#import "NALUTypes.h"
+
+
+
+typedef enum {
+    NALUTypeSliceNoneIDR = 1,
+    NALUTypeSliceIDR = 5,
+    NALUTypeSPS = 7,
+    NALUTypePPS = 8
+} NALUType;
 
 @interface ViewController ()
+{
+    NSUInteger offset;
+}
+
+
+@property (nonatomic) BOOL videoFormatDescriptionAvailable;
+@property (nonatomic) CMVideoFormatDescriptionRef videoFormatDescr;
+@property (nonatomic, strong) NSData * spsData;
+@property (nonatomic, strong) NSData * ppsData;
+@property (nonatomic, strong) NSMutableData * naluBuffer;
+@property (nonatomic, strong) NSData * startCode;
 
 @end
 
@@ -18,13 +39,15 @@ AVSampleBufferDisplayLayer* displayLayer;
 - (void)viewDidLoad {
     [super viewDidLoad];
     // Do any additional setup after loading the view, typically from a nib.
-    dispatch_queue_t queue = dispatch_queue_create("com.livestream.queue", DISPATCH_QUEUE_SERIAL);
-    udpSocket = [[GCDAsyncUdpSocket alloc] initWithDelegate:self delegateQueue:queue];
+    _naluBuffer=[NSMutableData new];
+    _startCode=[NSData dataWithBytes:"\x00\x00\x00\x01" length:(sizeof "\x00\x00\x00\x01") - 1];
+    dispatch_queue_t receiveQueue = dispatch_queue_create("com.livestream.queue", DISPATCH_QUEUE_SERIAL);
+    udpSocket = [[GCDAsyncUdpSocket alloc] initWithDelegate:self delegateQueue:receiveQueue];
     [self initializeDisplayLayer];
-    [self startServer];
+    [self openSocket];
 }
 
--(void)startServer
+-(void)openSocket
 {
     NSError *error;
     if (![udpSocket bindToPort:1900 error:&error])
@@ -46,226 +69,9 @@ AVSampleBufferDisplayLayer* displayLayer;
 withFilterContext:(id)filterContext
 {
     
-    OSStatus status;
+    //[_naluBuffer appendData:data];
+    NSLog(@"1");
     
-    uint8_t *vData = NULL;
-    uint8_t *pps = NULL;
-    uint8_t *sps = NULL;
-    uint8_t *frame=(uint8_t*)[data bytes];
-    uint32_t *frameSize = (uint32_t*)[data length];
-    
-    
-    int startCodeIndex = 0;
-    int secondStartCodeIndex = 0;
-    int thirdStartCodeIndex = 0;
-    
-    long blockLength = 0;
-    
-    CMSampleBufferRef sampleBuffer = NULL;
-    CMBlockBufferRef blockBuffer = NULL;
-    
-    int nalu_type = (frame[startCodeIndex + 4] & 0x1F);
-    //NSLog(@"~~~~~~~ Received NALU Type \"%@\" ~~~~~~~~", naluTypesStrings[nalu_type]);
-    if (nalu_type == 7)
-    {
-        // find where the second PPS start code begins, (the 0x00 00 00 01 code)
-        // from which we also get the length of the first SPS code
-        for (int i = startCodeIndex + 4; i < startCodeIndex + 40; i++)
-        {
-            if (frame[i] == 0x00 && frame[i+1] == 0x00 && frame[i+2] == 0x00 && frame[i+3] == 0x01)
-            {
-                secondStartCodeIndex = i;
-                _spsSize = secondStartCodeIndex;   // includes the header in the size
-                break;
-            }
-        }
-        nalu_type = (frame[secondStartCodeIndex + 4] & 0x1F);
-        //NSLog(@"~~~~~~~ Received NALU Type \"%@\" ~~~~~~~~", naluTypesStrings[nalu_type]);
-    }
-    
-    if(nalu_type == 8) {
-        
-        // find where the NALU after this one starts so we know how long the PPS parameter is
-        for (int i = _spsSize + 12; i < _spsSize + 50; i++)
-        {
-            if (frame[i] == 0x00 && frame[i+1] == 0x00 && frame[i+2] == 0x00 && frame[i+3] == 0x01)
-            {
-                thirdStartCodeIndex = i;
-                _ppsSize = thirdStartCodeIndex - _spsSize;
-                break;
-            }
-        }
-        
-        sps = malloc(_spsSize - 4);
-        pps = malloc(_ppsSize - 4);
-        
-        memcpy (sps, &frame[4], _spsSize-4);
-        memcpy (pps, &frame[_spsSize+4], _ppsSize-4);
-        
-        uint8_t*  parameterSetPointers[2] = {sps, pps};
-        size_t parameterSetSizes[2] = {_spsSize-4, _ppsSize-4};
-        
-        status = CMVideoFormatDescriptionCreateFromH264ParameterSets(kCFAllocatorDefault, 2,
-                                                                     (const uint8_t *const*)parameterSetPointers,
-                                                                     parameterSetSizes, 4,
-                                                                     &_formatDesc);
-        
-        NSLog(@"\t\t Creation of CMVideoFormatDescription: %@", (status == noErr) ? @"successful!" : @"failed...");
-        if(status != noErr) NSLog(@"\t\t Format Description ERROR type: %d", (int)status);
-        
-        nalu_type = (frame[thirdStartCodeIndex + 4] & 0x1F);
-    }
-    
-    if((status == noErr) && (_decompressionSession == NULL))
-    {
-        [self createDecompSession];
-    }
-    
-    
-    if(nalu_type == 5)
-    {
-        // find the offset, or where the SPS and PPS NALUs end and the IDR frame NALU begins
-        int offset = _spsSize + _ppsSize;
-        blockLength = frameSize - offset;
-        //        NSLog(@"Block Length : %ld", blockLength);
-        vData = malloc(blockLength);
-        vData = memcpy(vData, &frame[offset], blockLength);
-        
-        // replace the start code header on this NALU with its size.
-        // AVCC format requires that you do this.
-        // htonl converts the unsigned int from host to network byte order
-        uint32_t dataLength32 = htonl (blockLength - 4);
-        memcpy (vData, &dataLength32, sizeof (uint32_t));
-        
-        // create a block buffer from the IDR NALU
-        status = CMBlockBufferCreateWithMemoryBlock(NULL, vData,  // memoryBlock to hold buffered data
-                                                    blockLength,  // block length of the mem block in bytes.
-                                                    kCFAllocatorNull, NULL,
-                                                    0, // offsetToData
-                                                    blockLength,   // dataLength of relevant bytes, starting at offsetToData
-                                                    0, &blockBuffer);
-        
-        NSLog(@"\t\t BlockBufferCreation: \t %@", (status == kCMBlockBufferNoErr) ? @"successful!" : @"failed...");
-    }
-    
-    if (nalu_type == 1)
-    {
-        // non-IDR frames do not have an offset due to SPS and PSS, so the approach
-        // is similar to the IDR frames just without the offset
-        blockLength = frameSize;
-        vData = malloc(blockLength);
-        vData = memcpy(vData, &frame[0], blockLength);
-        
-        // again, replace the start header with the size of the NALU
-        uint32_t dataLength32 = htonl (blockLength - 4);
-        memcpy (vData, &dataLength32, sizeof (uint32_t));
-        
-        status = CMBlockBufferCreateWithMemoryBlock(NULL, vData,  // memoryBlock to hold data. If NULL, block will be alloc when needed
-                                                    blockLength,  // overall length of the mem block in bytes
-                                                    kCFAllocatorNull, NULL,
-                                                    0,     // offsetToData
-                                                    blockLength,  // dataLength of relevant data bytes, starting at offsetToData
-                                                    0, &blockBuffer);
-        
-        NSLog(@"\t\t BlockBufferCreation: \t %@", (status == kCMBlockBufferNoErr) ? @"successful!" : @"failed...");
-    }
-    
-    // now create our sample buffer from the block buffer,
-    if(status == noErr)
-    {
-        // here I'm not bothering with any timing specifics since in my case we displayed all frames immediately
-        const size_t sampleSize = blockLength;
-        status = CMSampleBufferCreate(kCFAllocatorDefault,
-                                      blockBuffer, true, NULL, NULL,
-                                      _formatDesc, 1, 0, NULL, 1,
-                                      &sampleSize, &sampleBuffer);
-        
-        NSLog(@"\t\t SampleBufferCreate: \t %@", (status == noErr) ? @"successful!" : @"failed...");
-    }
-    
-    if(status == noErr)
-    {
-        // set some values of the sample buffer's attachments
-        CFArrayRef attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, YES);
-        CFMutableDictionaryRef dict = (CFMutableDictionaryRef)CFArrayGetValueAtIndex(attachments, 0);
-        CFDictionarySetValue(dict, kCMSampleAttachmentKey_DisplayImmediately, kCFBooleanTrue);
-        
-        // either send the samplebuffer to a VTDecompressionSession or to an AVSampleBufferDisplayLayer
-        [self render:sampleBuffer];
-    }
-    
-    // free memory to avoid a memory leak, do the same for sps, pps and blockbuffer
-    if (NULL != vData)
-    {
-        free (vData);
-        data = NULL;
-    }
-    
-}
-
--(void) createDecompSession
-{
-    // make sure to destroy the old VTD session
-    _decompressionSession = NULL;
-    VTDecompressionOutputCallbackRecord callBackRecord;
-    callBackRecord.decompressionOutputCallback = decompressionSessionDecodeFrameCallback;
-    
-    // this is necessary if you need to make calls to Objective C "self" from within in the callback method.
-    callBackRecord.decompressionOutputRefCon = (__bridge void *)self;
-    
-    // you can set some desired attributes for the destination pixel buffer.  I didn't use this but you may
-    // if you need to set some attributes, be sure to uncomment the dictionary in VTDecompressionSessionCreate
-    /*NSDictionary *destinationImageBufferAttributes = [NSDictionary dictionaryWithObjectsAndKeys:
-     [NSNumber numberWithBool:YES],
-     (id)kCVPixelBufferOpenGLESCompatibilityKey,
-     nil];*/
-    
-    OSStatus status =  VTDecompressionSessionCreate(NULL, _formatDesc, NULL,
-                                                    NULL, // (__bridge CFDictionaryRef)(destinationImageBufferAttributes)
-                                                    &callBackRecord, &_decompressionSession);
-    NSLog(@"Video Decompression Session Create: \t %@", (status == noErr) ? @"successful!" : @"failed...");
-    if(status != noErr) NSLog(@"\t\t VTD ERROR type: %d", (int)status);
-
-}
-
-
-void decompressionSessionDecodeFrameCallback(void *decompressionOutputRefCon,
-                                             void *sourceFrameRefCon,
-                                             OSStatus status,
-                                             VTDecodeInfoFlags infoFlags,
-                                             CVImageBufferRef imageBuffer,
-                                             CMTime presentationTimeStamp,
-                                             CMTime presentationDuration)
-{
-    
-    if (status != noErr)
-    {
-        NSError *error = [NSError errorWithDomain:NSOSStatusErrorDomain code:status userInfo:nil];
-        NSLog(@"Decompressed error: %@", error);
-    }
-    else
-    {
-        NSLog(@"Decompressed sucessfully");
-    }
-}
-
-
-- (void) render:(CMSampleBufferRef)sampleBuffer
-{
-    /*
-     VTDecodeFrameFlags flags = kVTDecodeFrame_EnableAsynchronousDecompression;
-     VTDecodeInfoFlags flagOut;
-     NSDate* currentTime = [NSDate date];
-     VTDecompressionSessionDecodeFrame(_decompressionSession, sampleBuffer, flags,
-     (void*)CFBridgingRetain(currentTime), &flagOut);
-     
-     CFRelease(sampleBuffer);*/
-    
-    // if you're using AVSampleBufferDisplayLayer, you only need to use this line of code
-    if (displayLayer) {
-        NSLog(@"Success ****");
-        [displayLayer enqueueSampleBuffer:sampleBuffer];
-    }
 }
 
 -(void) initializeDisplayLayer
@@ -285,6 +91,155 @@ void decompressionSessionDecodeFrameCallback(void *decompressionOutputRefCon,
     [_VideoView.layer addSublayer:displayLayer];
 }
 
+
+- (void)parseNALU:(NSData *)NALU {
+    int type = [self getNALUType: NALU];
+    
+    NSLog(@"NALU with Type \"%@\" received.", naluTypesStrings[type]);
+    
+    switch (type)
+    {
+        case NALUTypeSliceNoneIDR:
+        case NALUTypeSliceIDR:
+            [self handleSlice:NALU];
+            break;
+        case NALUTypeSPS:
+            [self handleSPS:NALU];
+            [self updateFormatDescriptionIfPossible];
+            break;
+        case NALUTypePPS:
+            [self handlePPS:NALU];
+            [self updateFormatDescriptionIfPossible];
+            break;
+        default:
+            break;
+    }
+}
+
+- (int)getNALUType:(NSData *)NALU {
+    uint8_t * bytes = (uint8_t *) NALU.bytes;
+    
+    return bytes[0] & 0x1F;
+}
+
+
+- (void)handleSlice:(NSData *)NALU {
+    if (self.videoFormatDescriptionAvailable) {
+        /* The length of the NALU in big endian */
+        const uint32_t NALUlengthInBigEndian = CFSwapInt32HostToBig((uint32_t) NALU.length);
+        
+        /* Create the slice */
+        NSMutableData * slice = [[NSMutableData alloc] initWithBytes:&NALUlengthInBigEndian length:4];
+        
+        /* Append the contents of the NALU */
+        [slice appendData:NALU];
+        
+        /* Create the video block */
+        CMBlockBufferRef videoBlock = NULL;
+        
+        OSStatus status;
+        
+        status =
+        CMBlockBufferCreateWithMemoryBlock
+        (
+         NULL,
+         (void *) slice.bytes,
+         slice.length,
+         kCFAllocatorNull,
+         NULL,
+         0,
+         slice.length,
+         0,
+         & videoBlock
+         );
+        
+        NSLog(@"BlockBufferCreation: %@", (status == kCMBlockBufferNoErr) ? @"successfully." : @"failed.");
+        
+        /* Create the CMSampleBuffer */
+        CMSampleBufferRef sbRef = NULL;
+        
+        const size_t sampleSizeArray[] = { slice.length };
+        
+        status =
+        CMSampleBufferCreate
+        (
+         kCFAllocatorDefault,
+         videoBlock,
+         true,
+         NULL,
+         NULL,
+         _videoFormatDescr,
+         1,
+         0,
+         NULL,
+         1,
+         sampleSizeArray,
+         & sbRef
+         );
+        
+        NSLog(@"SampleBufferCreate: %@", (status == noErr) ? @"successfully." : @"failed.");
+        
+        /* Enqueue the CMSampleBuffer in the AVSampleBufferDisplayLayer */
+        CFArrayRef attachments = CMSampleBufferGetSampleAttachmentsArray(sbRef, YES);
+        CFMutableDictionaryRef dict = (CFMutableDictionaryRef)CFArrayGetValueAtIndex(attachments, 0);
+        CFDictionarySetValue(dict, kCMSampleAttachmentKey_DisplayImmediately, kCFBooleanTrue);
+        
+        NSLog(@"Error: %@, Status: %@",
+              displayLayer.error,
+              (displayLayer.status == AVQueuedSampleBufferRenderingStatusUnknown)
+              ? @"unknown"
+              : (
+                 (displayLayer.status == AVQueuedSampleBufferRenderingStatusRendering)
+                 ? @"rendering"
+                 :@"failed"
+                 )
+              );
+        
+        dispatch_async(dispatch_get_main_queue(),^{
+            [displayLayer enqueueSampleBuffer:sbRef];
+            [displayLayer setNeedsDisplay];
+        });
+        
+        NSLog(@" ");
+    }
+}
+
+- (void)handleSPS:(NSData *)NALU {
+    _spsData = [NALU copy];
+}
+
+- (void)handlePPS:(NSData *)NALU {
+    _ppsData = [NALU copy];
+}
+
+- (void)updateFormatDescriptionIfPossible {
+    if (_spsData != nil && _ppsData != nil) {
+        const uint8_t * const parameterSetPointers[2] = {
+            (const uint8_t *) _spsData.bytes,
+            (const uint8_t *) _ppsData.bytes
+        };
+        
+        const size_t parameterSetSizes[2] = {
+            _spsData.length,
+            _ppsData.length
+        };
+        
+        OSStatus status =
+        CMVideoFormatDescriptionCreateFromH264ParameterSets
+        (
+         kCFAllocatorDefault,
+         2,
+         parameterSetPointers,
+         parameterSetSizes,
+         4,
+         & _videoFormatDescr
+         );
+        
+        _videoFormatDescriptionAvailable = YES;
+        
+        NSLog(@"Updated CMVideoFormatDescription. Creation: %@.", (status == noErr) ? @"successfully." : @"failed.");
+    }
+}
 
 
 - (void)didReceiveMemoryWarning {

@@ -16,6 +16,7 @@
 		CC4B5CF41F50D66600E8DEE5 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = CC4B5CF21F50D66600E8DEE5 /* LaunchScreen.storyboard */; };
 		CC4B5CFF1F50D66600E8DEE5 /* CameraReceiveStreamTests.m in Sources */ = {isa = PBXBuildFile; fileRef = CC4B5CFE1F50D66600E8DEE5 /* CameraReceiveStreamTests.m */; };
 		CC4B5D0A1F50D66600E8DEE5 /* CameraReceiveStreamUITests.m in Sources */ = {isa = PBXBuildFile; fileRef = CC4B5D091F50D66600E8DEE5 /* CameraReceiveStreamUITests.m */; };
+		CCA808551F5F27E600BB6CC6 /* NALUTypes.m in Sources */ = {isa = PBXBuildFile; fileRef = CCA808541F5F27E600BB6CC6 /* NALUTypes.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -55,6 +56,8 @@
 		CC4B5D051F50D66600E8DEE5 /* CameraReceiveStreamUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CameraReceiveStreamUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		CC4B5D091F50D66600E8DEE5 /* CameraReceiveStreamUITests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CameraReceiveStreamUITests.m; sourceTree = "<group>"; };
 		CC4B5D0B1F50D66600E8DEE5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		CCA808531F5F27E600BB6CC6 /* NALUTypes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NALUTypes.h; sourceTree = "<group>"; };
+		CCA808541F5F27E600BB6CC6 /* NALUTypes.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = NALUTypes.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -125,6 +128,8 @@
 		CC4B5CE31F50D66600E8DEE5 /* CameraReceiveStream */ = {
 			isa = PBXGroup;
 			children = (
+				CCA808531F5F27E600BB6CC6 /* NALUTypes.h */,
+				CCA808541F5F27E600BB6CC6 /* NALUTypes.m */,
 				CC4B5CE71F50D66600E8DEE5 /* AppDelegate.h */,
 				CC4B5CE81F50D66600E8DEE5 /* AppDelegate.m */,
 				CC4B5CEA1F50D66600E8DEE5 /* ViewController.h */,
@@ -236,6 +241,11 @@
 						CreatedOnToolsVersion = 8.3.3;
 						DevelopmentTeam = XE6XA4DH2N;
 						ProvisioningStyle = Automatic;
+						SystemCapabilities = {
+							com.apple.BackgroundModes = {
+								enabled = 0;
+							};
+						};
 					};
 					CC4B5CF91F50D66600E8DEE5 = {
 						CreatedOnToolsVersion = 8.3.3;
@@ -360,6 +370,7 @@
 				CC4B5CEC1F50D66600E8DEE5 /* ViewController.m in Sources */,
 				CC4B5CE91F50D66600E8DEE5 /* AppDelegate.m in Sources */,
 				CC4B5CE61F50D66600E8DEE5 /* main.m in Sources */,
+				CCA808551F5F27E600BB6CC6 /* NALUTypes.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -513,6 +524,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				DEVELOPMENT_TEAM = XE6XA4DH2N;
 				INFOPLIST_FILE = CameraReceiveStream/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 10.1;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = com.ASU.CameraReceiveStream;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -526,6 +538,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				DEVELOPMENT_TEAM = XE6XA4DH2N;
 				INFOPLIST_FILE = CameraReceiveStream/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 10.1;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = com.ASU.CameraReceiveStream;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -601,6 +614,7 @@
 				CC4B5D101F50D66600E8DEE5 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 		CC4B5D111F50D66600E8DEE5 /* Build configuration list for PBXNativeTarget "CameraReceiveStreamTests" */ = {
 			isa = XCConfigurationList;
@@ -609,6 +623,7 @@
 				CC4B5D131F50D66600E8DEE5 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 		CC4B5D141F50D66600E8DEE5 /* Build configuration list for PBXNativeTarget "CameraReceiveStreamUITests" */ = {
 			isa = XCConfigurationList;
@@ -617,6 +632,7 @@
 				CC4B5D161F50D66600E8DEE5 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
