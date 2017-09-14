@@ -21,6 +21,8 @@ typedef enum {
 @interface ViewController ()
 {
     NSUInteger offset;
+    NSFileHandle *fileHandle;
+    NSString *h264File;
 }
 
 
@@ -28,32 +30,57 @@ typedef enum {
 @property (nonatomic) CMVideoFormatDescriptionRef videoFormatDescr;
 @property (nonatomic, strong) NSData * spsData;
 @property (nonatomic, strong) NSData * ppsData;
-@property (nonatomic, strong) NSMutableData * naluBuffer;
+@property (nonatomic, strong) NSMutableArray * NALBuffer;
 @property (nonatomic, strong) NSData * startCode;
 
 @end
 
 @implementation ViewController
 GCDAsyncUdpSocket *udpSocket;
+
+dispatch_queue_t receiveDataQueue;
+dispatch_queue_t writeToFileQueue;
+dispatch_queue_t sendToDecodeQueue;
+
 AVSampleBufferDisplayLayer* displayLayer;
 - (void)viewDidLoad {
     [super viewDidLoad];
     // Do any additional setup after loading the view, typically from a nib.
-    _naluBuffer=[NSMutableData new];
+    _NALBuffer=[NSMutableArray new];
     _startCode=[NSData dataWithBytes:"\x00\x00\x00\x01" length:(sizeof "\x00\x00\x00\x01") - 1];
-    dispatch_queue_t receiveQueue = dispatch_queue_create("com.livestream.queue", DISPATCH_QUEUE_SERIAL);
-    udpSocket = [[GCDAsyncUdpSocket alloc] initWithDelegate:self delegateQueue:receiveQueue];
+    receiveDataQueue = dispatch_queue_create("com.receiveDataQueue.queue", DISPATCH_QUEUE_SERIAL);
+    writeToFileQueue = dispatch_queue_create("com.writeToFile.queue", DISPATCH_QUEUE_SERIAL);
+    sendToDecodeQueue = dispatch_queue_create("com.sendToDecode.queue", DISPATCH_QUEUE_SERIAL);
+    udpSocket = [[GCDAsyncUdpSocket alloc] initWithDelegate:self delegateQueue:receiveDataQueue];
     [self initializeDisplayLayer];
     [self openSocket];
+    [self createNewH264File];
+    
+}
+
+-(void)createNewH264File
+{
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+    NSString *documentsDirectory = [paths objectAtIndex:0];
+    
+    h264File = [documentsDirectory stringByAppendingPathComponent:@"test.h264"];
+    [fileManager removeItemAtPath:h264File error:nil];
+    [fileManager createFileAtPath:h264File contents:nil attributes:nil];
+    
+
+    fileHandle = [NSFileHandle fileHandleForWritingAtPath:h264File];
 }
 
 -(void)openSocket
 {
     NSError *error;
+    
     if (![udpSocket bindToPort:1900 error:&error])
     {
         NSLog(@"Bind error");
     }
+    [udpSocket joinMulticastGroup:@"239.0.0.1" error:&error];
     if (![udpSocket beginReceiving:&error])
     {
         [udpSocket close];
@@ -64,14 +91,26 @@ AVSampleBufferDisplayLayer* displayLayer;
 }
 
 
+
 - (void)udpSocket:(GCDAsyncUdpSocket *)sock didReceiveData:(NSData *)data
       fromAddress:(NSData *)address
 withFilterContext:(id)filterContext
 {
     
-    //[_naluBuffer appendData:data];
-    NSLog(@"1");
+    dispatch_async(writeToFileQueue, ^{
+        [self writeDataToBuffer:data];
+    });
     
+}
+
+-(void)writeDataToBuffer:(NSData*)data
+{
+    NSMutableData *NALUnit=[[NSMutableData alloc] initWithData:data];
+    NSRange range = NSMakeRange(0, 4);
+    [NALUnit replaceBytesInRange:range withBytes:NULL length:0];
+    dispatch_async(sendToDecodeQueue, ^{
+        [self parseNALU:NALUnit];
+    });
 }
 
 -(void) initializeDisplayLayer
