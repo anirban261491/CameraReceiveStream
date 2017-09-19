@@ -80,7 +80,6 @@ AVSampleBufferDisplayLayer* displayLayer;
     {
         NSLog(@"Bind error");
     }
-    [udpSocket joinMulticastGroup:@"239.0.0.1" error:&error];
     if (![udpSocket beginReceiving:&error])
     {
         [udpSocket close];
