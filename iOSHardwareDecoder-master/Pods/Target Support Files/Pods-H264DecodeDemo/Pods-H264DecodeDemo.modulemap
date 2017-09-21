@@ -1,0 +1,6 @@
+framework module Pods_H264DecodeDemo {
+  umbrella header "Pods-H264DecodeDemo-umbrella.h"
+
+  export *
+  module * { export * }
+}

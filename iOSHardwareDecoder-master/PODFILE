@@ -1,0 +1,4 @@
+use_frameworks! 
+target 'H264DecodeDemo' do
+	pod 'CocoaAsyncSocket'  
+end

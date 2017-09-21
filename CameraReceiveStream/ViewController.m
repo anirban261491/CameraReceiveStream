@@ -23,6 +23,7 @@ typedef enum {
     NSUInteger offset;
     NSFileHandle *fileHandle;
     NSString *h264File;
+    int count;
 }
 
 
@@ -46,6 +47,7 @@ AVSampleBufferDisplayLayer* displayLayer;
 - (void)viewDidLoad {
     [super viewDidLoad];
     // Do any additional setup after loading the view, typically from a nib.
+    count=0;
     _NALBuffer=[NSMutableArray new];
     _startCode=[NSData dataWithBytes:"\x00\x00\x00\x01" length:(sizeof "\x00\x00\x00\x01") - 1];
     receiveDataQueue = dispatch_queue_create("com.receiveDataQueue.queue", DISPATCH_QUEUE_SERIAL);
@@ -95,18 +97,41 @@ AVSampleBufferDisplayLayer* displayLayer;
       fromAddress:(NSData *)address
 withFilterContext:(id)filterContext
 {
-    
     dispatch_async(writeToFileQueue, ^{
-        [self writeDataToBuffer:data];
+        [self addToBuffer:data];
     });
-    
+    dispatch_async(writeToFileQueue, ^{
+        [self readFromBufferAndSend];
+    });
+}
+
+-(void)addToBuffer:(NSData*)NALUnit
+{
+    [_NALBuffer addObject:NALUnit];
+}
+
+
+-(void)readFromBufferAndSend
+{
+    NSData *data = [_NALBuffer objectAtIndex:0];
+    [_NALBuffer removeObjectAtIndex:0];
+    NSUInteger length=[data length];
+    NSMutableData *NALUnit=[[NSMutableData alloc] initWithData:data];
+    NSRange range = NSMakeRange(0, 4);
+    [NALUnit replaceBytesInRange:range withBytes:NULL length:0];
+    NSLog(@"Packet - %d, Size - %lu, Type - %d",count++,length,[self getNALUType:NALUnit]);
+    dispatch_async(sendToDecodeQueue, ^{
+        [self parseNALU:NALUnit];
+    });
 }
 
 -(void)writeDataToBuffer:(NSData*)data
 {
+    NSUInteger length=[data length];
     NSMutableData *NALUnit=[[NSMutableData alloc] initWithData:data];
     NSRange range = NSMakeRange(0, 4);
     [NALUnit replaceBytesInRange:range withBytes:NULL length:0];
+    NSLog(@"Packet - %d, Size - %lu, Type - %d",count++,length,[self getNALUType:NALUnit]);
     dispatch_async(sendToDecodeQueue, ^{
         [self parseNALU:NALUnit];
     });

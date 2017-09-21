@@ -9,13 +9,13 @@
             shouldBeEnabled = "Yes"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
-            filePath = "CameraReceiveStream/ViewController.m"
-            timestampString = "527666182.693569"
+            filePath = "H264DecodeDemo/ViewController.m"
+            timestampString = "527677170.917872"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "124"
-            endingLineNumber = "124"
-            landmarkName = "-readFromBufferAndSend"
+            startingLineNumber = "156"
+            endingLineNumber = "156"
+            landmarkName = "-parseNALU:"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
